@@ -5018,7 +5018,6 @@ public:
                           pDesc->JitterOffsetY,
                           pDesc->PreExposure,
                       },
-                  motion_vector_in_display_res = pDesc->MotionVectorInDisplayRes,
                   motion_vector_format, mv_downscaled = std::move(mv_downscaled)
                 ](ArgumentEncodingContext &enc) mutable {
       auto mv_view = motion_vector->createView(
@@ -5028,21 +5027,16 @@ public:
            .miplevelCount = 1,
            .firstArraySlice = 0,
            .arraySize = 1});
-      
-      const uint32_t effective_input_width =
-          props.input_content_width ? props.input_content_width : input->width();
-      const uint32_t effective_input_height =
-          props.input_content_height ? props.input_content_height : input->height();
-
       auto &scaler_info = enc.currentFrameStatistics().last_scaler_info;
       scaler_info.type = ScalerType::Temporal;
       scaler_info.auto_exposure = exposure == nullptr;
-      scaler_info.input_width = effective_input_width;
-      scaler_info.input_height = effective_input_height;
+      scaler_info.input_width = props.input_content_width;
+      scaler_info.input_height = props.input_content_height;
       scaler_info.output_width = output->width();
       scaler_info.output_height = output->height();
 
       scaler_info.motion_vector_highres = mv_downscaled != nullptr;
+
       if (scaler_info.motion_vector_highres) {
         enc.mv_scale_cmd.dispatch(
             motion_vector, mv_view, mv_downscaled, 0, props.motion_vector_scale_x, props.motion_vector_scale_y
@@ -5052,17 +5046,7 @@ public:
         new_props.motion_vector_scale_y = 1.0;
         enc.upscaleTemporal(input, output, depth, mv_downscaled, 0, exposure, scaler, new_props);
       } else {
-        const bool mv_force_scale = !motion_vector_in_display_res && props.motion_vector_scale_x == 1.0 && props.motion_vector_scale_y == 1.0
-         && motion_vector->width() == input->width() && motion_vector->height() == input->height();
-
-        if (mv_force_scale) {
-          WMTFXTemporalScalerProps new_props = props;
-          new_props.motion_vector_scale_x = (float)effective_input_width;
-          new_props.motion_vector_scale_y = (float)effective_input_height;
-          enc.upscaleTemporal(input, output, depth, motion_vector, mv_view, exposure, scaler, new_props);
-        } else {
-          enc.upscaleTemporal(input, output, depth, motion_vector, mv_view, exposure, scaler, props);
-        }
+        enc.upscaleTemporal(input, output, depth, motion_vector, mv_view, exposure, scaler, props);
       }
     });
   }
